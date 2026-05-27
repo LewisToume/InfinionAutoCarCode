@@ -39,7 +39,12 @@
 #define ISR_PRIORITY_CCU6_INT1  40                                          /* Priority for interrupt ISR           */
 #define CCU6_TIMER_FREQ         48828                                       /* Timer module frequency in Hz         */
 #define CCU6_ISR_FREQ           50                                   /* ISR frequency in Hz                  */
-#define CCU6_TIMER_PERIOD       (CCU6_TIMER_FREQ / CCU6_ISR_FREQ) - 1       /* Timer module period in ticks         */
+#define CCU6_TIMER_PERIOD       (CCU6_TIMER_FREQ / CCU6_ISR_FREQ) - 1
+#define MOTOR_PI_STEP_LIMIT     80
+#define MOTOR_PI_KP_NUM         1
+#define MOTOR_PI_KP_DEN         4
+#define MOTOR_PI_KI_NUM         1
+#define MOTOR_PI_KI_DEN         8
 
 
 /* CCU6 */
@@ -51,12 +56,51 @@
 /*********************************************************************************************************************/
 IfxCcu6_Timer g_timer;                                                      /* Timer structure                      */
 uint16 g_counter = 0;                                                        /* Variable to keep count of ISR calls  */
-sint16 MotorL_Duty = 2000, MotorR_Duty = 2000;
+volatile sint16 MotorTargetDuty = 0;
+volatile sint16 MotorLTargetDuty = 0, MotorRTargetDuty = 0;
+volatile sint16 MotorL_Duty = 0, MotorR_Duty = 0;
+static sint16 motorLLastError = 0;
+static sint16 motorRLastError = 0;
 /*********************************************************************************************************************/
 /*------------------------------------------------Function Prototypes------------------------------------------------*/
 /*********************************************************************************************************************/
 void initCCU6(void);
 
+static sint16 MotorDutyPiUpdate(sint16 duty, sint16 target, sint16 *lastError)
+{
+    sint16 error;
+    sint32 step;
+
+    error = target - duty;
+    step = ((sint32)(error - *lastError) * MOTOR_PI_KP_NUM) / MOTOR_PI_KP_DEN;
+    step += ((sint32)error * MOTOR_PI_KI_NUM) / MOTOR_PI_KI_DEN;
+
+    if((error != 0) && (step == 0))
+    {
+        step = (error > 0) ? 1 : -1;
+    }
+
+    if(step > MOTOR_PI_STEP_LIMIT)
+    {
+        step = MOTOR_PI_STEP_LIMIT;
+    }
+    else if(step < -MOTOR_PI_STEP_LIMIT)
+    {
+        step = -MOTOR_PI_STEP_LIMIT;
+    }
+
+    if((error > 0) && (step > error))
+    {
+        step = error;
+    }
+    else if((error < 0) && (step < error))
+    {
+        step = error;
+    }
+
+    *lastError = error;
+    return (sint16)(duty + step);
+}
 /*********************************************************************************************************************/
 /*---------------------------------------------Function Implementations----------------------------------------------*/
 /*********************************************************************************************************************/
@@ -81,15 +125,17 @@ void isrCCU6Timer(void)
     // 获取当前计数
     cnt_l = (sint16)IfxGpt12_T2_getTimerValue(&MODULE_GPT120);
     cnt_r = (sint16)IfxGpt12_T6_getTimerValue(&MODULE_GPT120);
-    // 清零计数器
+    // 清零计数�?
     IfxGpt12_T2_setTimerValue(&MODULE_GPT120,0);
     IfxGpt12_T6_setTimerValue(&MODULE_GPT120,0);
-    // 车速计算
+    // 车速计�?
     SpeedL = cnt_l;
     SpeedR = cnt_r;
-    //PID车速控制
+    //PID车速控�?
 
-    //控制命令发送
+    //控制命令发�?
+    MotorL_Duty = MotorDutyPiUpdate(MotorL_Duty, MotorLTargetDuty, &motorLLastError);
+    MotorR_Duty = MotorDutyPiUpdate(MotorR_Duty, MotorRTargetDuty, &motorRLastError);
     MotorControl(MotorL_Duty,MotorR_Duty);
 
 }

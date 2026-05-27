@@ -55,7 +55,7 @@ QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ*/
 #define MAX_ROW   LCDH
 #define MAX_COL   LCDW
 
-extern uint8 Camera_Flag;//2：表示传输完成
+extern volatile uint8 Camera_Flag;//2：表示传输完成
 
 typedef struct
 {

@@ -63,7 +63,7 @@ unsigned char Image_Use[LCDH][LCDW];
 /** 二值化后用于OLED显示的数据 */
 unsigned char Bin_Image[LCDH][LCDW];
 
-uint8 Camera_Flag = 0;
+volatile uint8 Camera_Flag = 0;
 
 
 void initDMA(void);
@@ -273,10 +273,10 @@ void Get_Bin_Image (unsigned char mode)
     {
         for (j = 0; j < LCDW; j++)
         {
-            if (Image_Use[i][j] > Threshold) //数值越大，显示的内容越多，较浅的图像也能显示出来
-                Bin_Image[i][j] = 0;
-            else
+            if (Image_Use[i][j] > Threshold)
                 Bin_Image[i][j] = 1;
+            else
+                Bin_Image[i][j] = 0;
         }
     }
 }

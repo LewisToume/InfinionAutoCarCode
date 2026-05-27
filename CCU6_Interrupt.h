@@ -27,6 +27,14 @@
 #ifndef CCU6_IR_GEN_H
 #define CCU6_IR_GEN_H 1
 
+#include "Ifx_Types.h"
+
+extern volatile sint16 MotorTargetDuty;
+extern volatile sint16 MotorLTargetDuty;
+extern volatile sint16 MotorRTargetDuty;
+extern volatile sint16 MotorL_Duty;
+extern volatile sint16 MotorR_Duty;
+
 /*********************************************************************************************************************/
 /*------------------------------------------------Function Prototypes------------------------------------------------*/
 /*********************************************************************************************************************/

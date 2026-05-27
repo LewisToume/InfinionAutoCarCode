@@ -43,15 +43,15 @@
 
 
 #define SERVO              IfxGtm_ATOM2_5_TOUT35_P33_13_OUT      /* 舵机 which will be driven by the PWM              */
-#define SERVO_LEFT_MAX     168000
-#define SERVO_MID          153000
-#define SERVO_RIGHT_MAX    138000
+#define SERVO_LEFT_MAX     160000
+#define SERVO_MID          145000
+#define SERVO_RIGHT_MAX    130000
 /*********************************************************************************************************************/
 /*-------------------------------------------------Global variables--------------------------------------------------*/
 /*********************************************************************************************************************/
 IfxGtm_Atom_Pwm_Config g_atomConfig;                            /* Timer configuration structure                    */
 IfxGtm_Atom_Pwm_Driver g_atomDriver[3];                            /* Timer Driver structure                           */                                        /* Initialization of the fade direction variable    */
-uint32 Servo_cali = 150000;
+uint32 Servo_cali = SERVO_MID;
 /*********************************************************************************************************************/
 /*-----------------------------------------------Function Prototypes-------------------------------------------------*/
 /*********************************************************************************************************************/
@@ -73,11 +73,11 @@ void initGtmATomPwm(void)
     IfxGtm_Cmu_enableClocks(&MODULE_GTM, IFXGTM_CMU_CLKEN_CLK0);                /* Enable the CMU clock 0           */
 
     IfxGtm_Atom_Pwm_initConfig(&g_atomConfig, &MODULE_GTM);                     /* Initialize default parameters    */
-    //舵机初始化
+    //舵机初始�?
     g_atomConfig.atom = SERVO.atom;                                       /* Select the ATOM depending on the LED     */
     g_atomConfig.atomChannel = SERVO.channel;                             /* Select the channel depending on the LED  */
     g_atomConfig.period = 1e6;                                            /* Set timer period                         */
-    g_atomConfig.dutyCycle = 150000;
+    g_atomConfig.dutyCycle = SERVO_MID;
     g_atomConfig.pin.outputPin = &SERVO;                                  /* Set LED as output                        */
     g_atomConfig.synchronousUpdateEnabled = TRUE;                       /* Enable synchronous update                */
 
@@ -137,7 +137,7 @@ void ServoControl(sint16 steer)
 void MotorControl(sint16 motor_l,sint16 motor_r)
 {
     uint32 duty_l,duty_r;
-    //*******左电机*******//
+    //*******左电�?******//
     //范围限制
     if(motor_l < -MOTOR_PERIOD)
     {
@@ -147,7 +147,7 @@ void MotorControl(sint16 motor_l,sint16 motor_r)
     {
         motor_l = MOTOR_PERIOD;
     }
-    //占空比
+    //占空�?
     if(motor_l < 0)
     {
         duty_l = motor_l + MOTOR_PERIOD;
@@ -159,7 +159,7 @@ void MotorControl(sint16 motor_l,sint16 motor_r)
         IfxPort_setPinState(MOTOR_L_N, IfxPort_State_low);
     }
 
-    //*******右电机*******//
+    //*******右电�?******//
         //范围限制
         if(motor_r < -MOTOR_PERIOD)
         {
@@ -169,7 +169,7 @@ void MotorControl(sint16 motor_l,sint16 motor_r)
         {
             motor_r = MOTOR_PERIOD;
         }
-        //占空比
+        //占空�?
         if(motor_r < 0)
         {
             duty_r = motor_r + MOTOR_PERIOD;

@@ -37,14 +37,182 @@
 #include <stdint.h>
 #include "ADC_Background_Scan.h"
 #include "CCU6_Interrupt.h"
+#include "LQ_PID.h"
 
 
 
 IfxCpu_syncEvent cpuSyncEvent = 0;
 uint16 adc_value;
-sint16 Steer = 0;
+volatile sint16 Steer = 0;
 uint16_t cnt;
 sint16 SpeedL = 0,SpeedR = 0;
+volatile sint16 Road_Center = LCDW / 2;
+volatile sint16 Road_Error = 0;
+volatile uint8 Road_Valid = 0;
+volatile uint8 Road_Valid_Count = 0;
+
+volatile sint16 Steer_P = 0;
+volatile sint16 Steer_D = 0;
+pid_param_t SteerPid;
+#define ROAD_ERROR_ROW_START   (LCDH / 3)
+#define ROAD_ERROR_ROW_END     (LCDH * 2 / 3)
+
+#define STEER_DEAD_ZONE       2
+#define MOTOR_CURVE_DUTY      2300
+#define MOTOR_STRAIGHT_DUTY   3000
+#define STRAIGHT_STEER_LIMIT  20
+#define MOTOR_INNER_RADIUS    40
+#define MOTOR_OUTER_RADIUS    60
+#define MOTOR_CENTER_RADIUS   ((MOTOR_INNER_RADIUS + MOTOR_OUTER_RADIUS) / 2)
+
+sint16 Calc_Steer_From_Road(void)
+{
+    sint16 error;
+    sint32 steer;
+    float pidOut;
+
+    if(Road_Valid == 0)
+    {
+        SteerPid.integrator = 0;
+        SteerPid.last_error = 0;
+        SteerPid.last_derivative = 0;
+        SteerPid.out = 0;
+        Steer_P = 0;
+        Steer_D = 0;
+        return 0;
+    }
+
+    error = Road_Error;
+    if((error > -STEER_DEAD_ZONE) && (error < STEER_DEAD_ZONE))
+    {
+        error = 0;
+    }
+
+    pidOut = PidLocCtrl(&SteerPid, (float)error);
+    Steer_P = (sint16)SteerPid.out_p;
+    Steer_D = (sint16)SteerPid.out_d;
+    steer = (sint32)pidOut;
+
+    if(steer > 100)
+    {
+        steer = 100;
+    }
+    else if(steer < -100)
+    {
+        steer = -100;
+    }
+
+    return (sint16)steer;
+}
+
+void Update_Motor_Target_From_Road(void)
+{
+    sint16 baseDuty = 0;
+
+    if(Road_Valid)
+    {
+        if((Steer > -STRAIGHT_STEER_LIMIT) && (Steer < STRAIGHT_STEER_LIMIT))
+        {
+            baseDuty = MOTOR_STRAIGHT_DUTY;
+            MotorLTargetDuty = baseDuty;
+            MotorRTargetDuty = baseDuty;
+        }
+        else
+        {
+            baseDuty = MOTOR_CURVE_DUTY;
+            if(Steer > 0)
+            {
+                MotorLTargetDuty = (sint16)((sint32)baseDuty * MOTOR_OUTER_RADIUS / MOTOR_CENTER_RADIUS);
+                MotorRTargetDuty = (sint16)((sint32)baseDuty * MOTOR_INNER_RADIUS / MOTOR_CENTER_RADIUS);
+            }
+            else
+            {
+                MotorLTargetDuty = (sint16)((sint32)baseDuty * MOTOR_INNER_RADIUS / MOTOR_CENTER_RADIUS);
+                MotorRTargetDuty = (sint16)((sint32)baseDuty * MOTOR_OUTER_RADIUS / MOTOR_CENTER_RADIUS);
+            }
+        }
+    }
+    else
+    {
+        baseDuty = 0;
+        MotorLTargetDuty = 0;
+        MotorRTargetDuty = 0;
+    }
+
+    MotorTargetDuty = baseDuty;
+}
+void Draw_Road_Center_Line(void)
+{
+    sint16 row;
+    sint32 centerSum = 0;
+    sint32 validSum = 0;
+
+    Road_Valid_Count = 0;
+
+    for(row = ROAD_ERROR_ROW_START; row < ROAD_ERROR_ROW_END; row++)
+    {
+        sint16 col;
+        sint16 start = -1;
+        sint16 end = -1;
+        sint16 bestStart = -1;
+        sint16 bestEnd = -1;
+        sint16 bestWidth = 0;
+
+        for(col = 0; col < LCDW; col++)
+        {
+            if(Bin_Image[row][col] != 0)
+            {
+                if(start < 0)
+                {
+                    start = col;
+                }
+                end = col;
+            }
+            else if(start >= 0)
+            {
+                sint16 width = end - start + 1;
+                if(width > bestWidth)
+                {
+                    bestWidth = width;
+                    bestStart = start;
+                    bestEnd = end;
+                }
+                start = -1;
+                end = -1;
+            }
+        }
+
+        if(start >= 0)
+        {
+            sint16 width = end - start + 1;
+            if(width > bestWidth)
+            {
+                bestWidth = width;
+                bestStart = start;
+                bestEnd = end;
+            }
+        }
+
+        if(bestWidth >= 8)
+        {
+            centerSum += (bestStart + bestEnd) / 2;
+            validSum++;
+            Road_Valid_Count++;
+        }
+    }
+
+    if((Road_Valid_Count >= 8) && (validSum > 0))
+    {
+        Road_Valid = 1;
+        Road_Center = (sint16)(centerSum / validSum);
+        Road_Error = Road_Center - (LCDW / 2);
+    }
+    else
+    {
+        Road_Valid = 0;
+        Road_Error = 0;
+    }
+}
 
 void core0_main(void)
 {
@@ -55,7 +223,12 @@ void core0_main(void)
      */
     IfxScuWdt_disableCpuWatchdog(IfxScuWdt_getCpuWatchdogPassword());
     IfxScuWdt_disableSafetyWatchdog(IfxScuWdt_getSafetyWatchdogPassword());
-    
+
+    PidInit(&SteerPid);
+    SteerPid.kp = 2.0f;
+    SteerPid.ki = 0.0f;
+    SteerPid.kd = 0.8f;
+    SteerPid.imax = 0.0f;    
     /* Wait for CPU sync event */
     IfxCpu_emitEvent(&cpuSyncEvent);
     IfxCpu_waitEvent(&cpuSyncEvent, 1);
@@ -64,42 +237,51 @@ void core0_main(void)
 //init_ASCLIN_UART();
 //send_receive_ASCLIN_UART_message();
     initADC();
-//显示屏测试
-    TFTSPI_Init(0);     // 先初始化屏幕，0/1 对应横竖屏
+//显示屏测�?
+    TFTSPI_Init(0);     // 先初始化屏幕�?/1 对应横竖�?
     TFTSPI_CLS(u16BLACK);
 
 //眨眼测试
-//    Test_Ayanami();
+    Test_Ayanami();
     //Test_TFT18();
 
 
 
 
-//电机舵机初始化
+//电机舵机初始�?
     initGtmATomPwm();
 //    ServoControl(0);
 
     initADC();
-//车速采集控制模块
+//车速采集控制模�?
     initGpt12Timer();
     initCCU6();
     startCCU6();
     CAMERA_Init(50);
 
-    TFTSPI_P6X8Str(0,0,"Here Comes a New Challenger!",u16WHITE,u16BLACK);
+//    TFTSPI_P6X8Str(0,0,"Here Comes a New Challenger!",u16WHITE,u16BLACK);
 
     while(1)
     {
         if(Camera_Flag == 2){//图像采集完成
         Get_Use_Image();
         Camera_Flag = 0;
-        TFTSPI_Road(0,0,120,160,(uint8 *)Image_Use);
+
+        Get_Bin_Image(0);
+        Bin_Image_Filter();
+        Draw_Road_Center_Line();
+        Steer = Calc_Steer_From_Road();
+        ServoControl(Steer);
+        Update_Motor_Target_From_Road();
+
+//        TFTSPI_Road(0,0,LCDH,LCDW,(uint8 *)Image_Use);
+//        TFTSPI_BinRoad(0,0,LCDH,LCDW,(uint8 *)Bin_Image);
         }
 
         //adc_value = readADCValue(0);
 //        cnt = IfxGpt12_T2_getTimerValue(&MODULE_GPT120);
         adc_value = readADCValue(0);
-        ServoControl(Steer);
+        //ServoControl(Steer);
 
         //不要停下来模式MotorControl(MotorL_Duty,MotorR_Duty);
 

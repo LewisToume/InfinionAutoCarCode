@@ -1736,16 +1736,8 @@ void Test_TFT18(void)
 }//TEST()
 void Test_Ayanami(void)
 {
-    TFTSPI_CLS(u16BLUE);
-    TFTSPI_P16x16Str(0,0,(unsigned char*)"机车人潘子，启动！",u16RED,u16BLUE);
+    TFTSPI_CLS(u16BLACK);
+    TFTSPI_P16x16Str(0,0,(unsigned char*)"机车人潘子，启动！",u16WHITE,u16BLACK);
     TFTSPI_P8X16Str(0,1,"Hands off Ayanami!",u16WHITE,u16BLACK);
-
-    while(1)
-    {
-        TFTSPI_Show_Logo(0,37);
-        waitTime(IfxStm_getTicksFromMilliseconds(BSP_DEFAULT_TIMER, 1500));
-
-        TFTSPI_Show_AyanamiEyeClosed(0,37);
-        waitTime(IfxStm_getTicksFromMilliseconds(BSP_DEFAULT_TIMER, 250));
-    }
+    TFTSPI_Show_Logo(0,37);
 }
